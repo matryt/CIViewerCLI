@@ -65,6 +65,9 @@
                         <manifest>
                             <mainClass>org.mathieucuvelier.CIViewerCLI.Main</mainClass>
                         </manifest>
+                        <manifestEntries>
+                            <Enable-Native-Access>ALL-UNNAMED</Enable-Native-Access>
+                        </manifestEntries>
                     </archive>
                 </configuration>
             </plugin>

@@ -26,8 +26,17 @@ public class EventDetector {
 
             }
             else {
-                events.add(Event.workflowStarted(run));
-                events.addAll(detectJobs(run, jobs, Map.of()));
+                if (!run.status().equals("completed")) {
+                    events.add(Event.workflowStarted(run));
+                    events.addAll(detectJobs(run, jobs, Map.of()));
+                } else {
+                    events.add(Event.workflowCompleted(run));
+                    for (WorkflowJobDTO job : jobs) {
+                        if (job.status().equals("completed")) {
+                            events.add(Event.jobCompleted(run, job));
+                        }
+                    }
+                }
             }
         }
         return events;

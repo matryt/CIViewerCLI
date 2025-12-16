@@ -3,7 +3,6 @@ package org.mathieucuvelier.CIViewerCLI;
 import java.io.IOException;
 import java.sql.SQLException;
 
-import org.mathieucuvelier.CIViewerCLI.persistence.DatabaseManager;
 import org.mathieucuvelier.CIViewerCLI.service.GithubClient;
 import org.mathieucuvelier.CIViewerCLI.service.WorkflowMonitor;
 import org.mathieucuvelier.CIViewerCLI.utils.ArgumentsParser;

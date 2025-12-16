@@ -2,7 +2,7 @@ package org.mathieucuvelier.CIViewerCLI.models;
 
 import java.time.Instant;
 
-import org.mathieucuvelier.CIViewerCLI.persistence.RunState;
+import org.mathieucuvelier.CIViewerCLI.utils.AnsiColors;
 
 public record Event(EventType type, Instant timestamp, String workflowName, String jobName, String stepName,
         String status, String conclusion, String branch, String commitSha) {
@@ -10,7 +10,14 @@ public record Event(EventType type, Instant timestamp, String workflowName, Stri
     public String toFormattedString() {
         StringBuilder sb = new StringBuilder();
         sb.append("[").append(timestamp.toString()).append("] ");
-        sb.append(type).append(" - ");
+        if (type == EventType.WORKFLOW_STARTED || type == EventType.JOB_STARTED || type == EventType.STEP_STARTED) {
+            sb.append(AnsiColors.BLUE.colorize(type.toString()));
+        } else if (type == EventType.STEP_FAILED) {
+            sb.append(AnsiColors.RED.colorize(type.toString()));
+        } else {
+            sb.append(type.toString());
+        }
+        sb.append(" - ");
         sb.append(workflowName);
         if (jobName != null) {
             sb.append(" / ").append(jobName);
@@ -20,7 +27,16 @@ public record Event(EventType type, Instant timestamp, String workflowName, Stri
         }
         sb.append(" - ").append(status);
         if (conclusion != null) {
-            sb.append(" (").append(conclusion).append(")");
+            sb.append(" (");
+            if (conclusion.equals("success")) {
+                sb.append(AnsiColors.GREEN.colorize(conclusion));
+            }
+            else if (conclusion.equals("failure") || conclusion.equals("failed")) {
+                sb.append(AnsiColors.RED.colorize(conclusion));
+            } else {
+                sb.append(conclusion);
+            }
+            sb.append(")");
         }
         sb.append(" - ").append(branch).append("@").append(commitSha.substring(0, Math.min(7, commitSha.length())));
         return sb.toString();
