@@ -1,5 +1,7 @@
 package org.mathieucuvelier.CIViewerCLI.persistence;
 
+import lombok.Getter;
+
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -12,6 +14,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.function.Function;
 
+@Getter
 public class DatabaseManager {
     private static final String DB_PATH = ".civiewer/state.db";
     private final Connection connection;
@@ -31,7 +34,7 @@ public class DatabaseManager {
             CREATE TABLE IF NOT EXISTS repo_state (
                 owner TEXT NOT NULL,
                 repo TEXT NOT NULL,
-                last_check_timestamp INTEGER NOT NULL,
+                last_check_timestamp TEXT NOT NULL,
                 PRIMARY KEY (owner, repo)
             );
 
@@ -55,13 +58,20 @@ public class DatabaseManager {
                 last_updated INTEGER NOT NULL,
                 PRIMARY KEY (owner, repo, run_id, job_id)
             );
+            CREATE TABLE IF NOT EXISTS step_state (
+                 owner TEXT NOT NULL,
+                 repo TEXT NOT NULL,
+                 run_id INTEGER NOT NULL,
+                 job_id INTEGER NOT NULL,
+                 step_name TEXT NOT NULL,
+                 status TEXT NOT NULL,
+                 conclusion TEXT NOT NULL,
+                 last_updated INTEGER NOT NULL,
+                 PRIMARY KEY (owner, repo, run_id, job_id, step_name)
+           );
         """;
 
         connection.createStatement().executeUpdate(createTables);
-    }
-
-    public Connection getConnection() {
-        return connection;
     }
 
     public <T> List<T> preparedQuery(

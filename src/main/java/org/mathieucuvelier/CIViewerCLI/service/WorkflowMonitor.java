@@ -3,24 +3,25 @@ package org.mathieucuvelier.CIViewerCLI.service;
 import java.io.IOException;
 import java.sql.SQLException;
 import java.time.Instant;
+import java.time.LocalDateTime;
+import java.time.ZoneId;
+import java.time.ZonedDateTime;
+import java.time.format.DateTimeFormatter;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
 
 import org.mathieucuvelier.CIViewerCLI.models.Event;
+import org.mathieucuvelier.CIViewerCLI.models.StepDto;
 import org.mathieucuvelier.CIViewerCLI.models.WorkflowJobDTO;
 import org.mathieucuvelier.CIViewerCLI.models.WorkflowRunDTO;
-import org.mathieucuvelier.CIViewerCLI.persistence.DatabaseManager;
-import org.mathieucuvelier.CIViewerCLI.persistence.JobState;
-import org.mathieucuvelier.CIViewerCLI.persistence.MonitorState;
-import org.mathieucuvelier.CIViewerCLI.persistence.RunState;
-import org.mathieucuvelier.CIViewerCLI.persistence.StateManager;
+import org.mathieucuvelier.CIViewerCLI.persistence.*;
 import org.mathieucuvelier.CIViewerCLI.utils.AnsiColors;
 
 public class WorkflowMonitor {
     private final GithubClient githubClient;
-    private long lastCheckTimestamp; // Example timestamp
+    private ZonedDateTime lastDateTime; // Example timestamp
     private boolean isRunning = true;
     private final StateManager stateManager = new StateManager(new DatabaseManager());
     private final EventDetector detector = new EventDetector();
@@ -35,14 +36,12 @@ public class WorkflowMonitor {
 
     private void addHook() {
         Runtime.getRuntime().addShutdownHook(new Thread(() -> {
-            lastCheckTimestamp = System.currentTimeMillis();
+            lastDateTime = LocalDateTime.now().atZone(ZoneId.systemDefault());
             isRunning = false;
             System.out.println("Shutting down WorkflowMonitor...");
         }));
         Runtime.getRuntime().addShutdownHook(
-            new Thread(() -> {
-                stateManager.close();
-            })
+            new Thread(stateManager::close)
         );
     }
 
@@ -50,24 +49,32 @@ public class WorkflowMonitor {
         return stateManager.loadState(owner, repo);
     }
 
-    private MonitorState buildMonitorState(Map<WorkflowRunDTO, List<WorkflowJobDTO>> runsWithJobs, long timestamp, Map<Long, RunState> knownRuns) {
+    private MonitorState buildMonitorState(Map<WorkflowRunDTO, List<WorkflowJobDTO>> runsWithJobs, ZonedDateTime datetime, Map<Long, RunState> knownRuns) {
     Map<Long, RunState> runsMap = new HashMap<>(knownRuns);
     
     for (Map.Entry<WorkflowRunDTO, List<WorkflowJobDTO>> entry : runsWithJobs.entrySet()) {
         WorkflowRunDTO run = entry.getKey();
         List<WorkflowJobDTO> jobs = entry.getValue();
-        
+
         Map<Long, JobState> jobsMap = jobs.stream()
             .collect(Collectors.toMap(
                 WorkflowJobDTO::id,
-                job -> new JobState(job.id(), job.status(), job.conclusion())
-            ));
+                job -> {
+                    Map<String, StepState> steps = new HashMap<>();
+                    for (StepDto stepDto : job.steps()) {
+                        steps.put(stepDto.name(), new StepState(stepDto.status(), stepDto.conclusion(), stepDto.name()));
+                    }
+                    return new JobState(job.id(), job.status(), job.conclusion(), steps);
+                }
+
+                )
+            );
         
         RunState runState = new RunState(run.id(), run.status(), run.conclusion(), jobsMap);
         runsMap.put(run.id(), runState);
     }
     
-    return new MonitorState(timestamp, runsMap);
+    return new MonitorState(datetime, runsMap);
 }
 
     public void startMonitoring() {
@@ -83,23 +90,25 @@ public class WorkflowMonitor {
     private MonitorState initializeState() {
         MonitorState state = getState();
         
-        if (state.lastCheckTimestamp() == 0) {
+        if (state.lastCheckTimestamp().equals(LocalDateTime.MIN.atZone(ZoneId.systemDefault()))) {
             return handleFirstRun();
         } else {
-            System.out.println("Resuming from last check timestamp: " + 
-                Instant.ofEpochMilli(state.lastCheckTimestamp()));
-            lastCheckTimestamp = state.lastCheckTimestamp();
+            DateTimeFormatter formatter = 
+                java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss z");
+            System.out.println("Resuming from last check timestamp: " +
+                    state.lastCheckTimestamp().format(formatter));
+            lastDateTime = state.lastCheckTimestamp();
             return state;
         }
     }
 
     private MonitorState handleFirstRun() {
         System.out.println("First run for this repository - initializing state");
-        lastCheckTimestamp = System.currentTimeMillis();
+        lastDateTime = LocalDateTime.now().atZone(ZoneId.systemDefault());
         
-        Map<WorkflowRunDTO, List<WorkflowJobDTO>> runsWithJobs = fetchRunsWithJobs(Instant.ofEpochMilli(0));
+        Map<WorkflowRunDTO, List<WorkflowJobDTO>> runsWithJobs = fetchRunsWithJobs(LocalDateTime.MIN.atZone(ZoneId.systemDefault()));
         
-        MonitorState state = buildMonitorState(runsWithJobs, lastCheckTimestamp, Map.of());
+        MonitorState state = buildMonitorState(runsWithJobs, lastDateTime, Map.of());
         stateManager.saveState(owner, repo, state);
         
         System.out.println("State initialized. Monitoring for new events...");
@@ -109,9 +118,9 @@ public class WorkflowMonitor {
     private void runMonitoringLoop(MonitorState state) {
         while (isRunning) {
             Map<WorkflowRunDTO, List<WorkflowJobDTO>> runsWithJobs = 
-                fetchRunsWithJobs(Instant.ofEpochMilli(lastCheckTimestamp));
-            
-            lastCheckTimestamp = System.currentTimeMillis();
+                fetchRunsWithJobs(lastDateTime);
+
+            lastDateTime = LocalDateTime.now().atZone(ZoneId.systemDefault());
             
             processAndDisplayEvents(runsWithJobs, state);
             
@@ -121,8 +130,8 @@ public class WorkflowMonitor {
         }
     }
 
-    private Map<WorkflowRunDTO, List<WorkflowJobDTO>> fetchRunsWithJobs(Instant since) {
-        List<WorkflowRunDTO> runs = githubClient.getWorkflowRuns(since);
+    private Map<WorkflowRunDTO, List<WorkflowJobDTO>> fetchRunsWithJobs(ZonedDateTime datetime) {
+        List<WorkflowRunDTO> runs = githubClient.getWorkflowRuns(datetime);
         Map<WorkflowRunDTO, List<WorkflowJobDTO>> runsWithJobs = new HashMap<>();
         
         for (WorkflowRunDTO run : runs) {
@@ -148,7 +157,7 @@ public class WorkflowMonitor {
 
     private MonitorState updateAndSaveState(Map<WorkflowRunDTO, List<WorkflowJobDTO>> runsWithJobs, 
                                             MonitorState currentState) {
-        MonitorState newState = buildMonitorState(runsWithJobs, lastCheckTimestamp, currentState.knownRuns());
+        MonitorState newState = buildMonitorState(runsWithJobs, lastDateTime, currentState.knownRuns());
         stateManager.saveState(owner, repo, newState);
         return newState;
     }

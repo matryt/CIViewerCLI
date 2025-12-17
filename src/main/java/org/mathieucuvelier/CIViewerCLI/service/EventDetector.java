@@ -5,11 +5,13 @@ import java.util.List;
 import java.util.Map;
 
 import org.mathieucuvelier.CIViewerCLI.models.Event;
+import org.mathieucuvelier.CIViewerCLI.models.StepDto;
 import org.mathieucuvelier.CIViewerCLI.models.WorkflowJobDTO;
 import org.mathieucuvelier.CIViewerCLI.models.WorkflowRunDTO;
 import org.mathieucuvelier.CIViewerCLI.persistence.JobState;
 import org.mathieucuvelier.CIViewerCLI.persistence.MonitorState;
 import org.mathieucuvelier.CIViewerCLI.persistence.RunState;
+import org.mathieucuvelier.CIViewerCLI.persistence.StepState;
 
 public class EventDetector {
     public List<Event> detectEvents(Map<WorkflowRunDTO, List<WorkflowJobDTO>> runsWithJobs, MonitorState previousState) {
@@ -46,10 +48,27 @@ public class EventDetector {
         List<Event> events = new ArrayList<>();
         for (WorkflowJobDTO job: jobs) {
             if (jobStates.containsKey(job.id())) {
-                if (job.completed(jobStates.get(job.id()))) events.add(Event.jobCompleted(run, job));
+                JobState state = jobStates.get(job.id());
+                if (job.completed(state)) events.add(Event.jobCompleted(run, job));
+                events.addAll(detectSteps(run, job, state.stepStates()));
             }
             else {
                 events.add(Event.jobStarted(run, job));
+                events.addAll(detectSteps(run, job, Map.of()));
+            }
+        }
+        return events;
+    }
+
+    private List<Event> detectSteps(WorkflowRunDTO run, WorkflowJobDTO job, Map<String, StepState> stepStates) {
+        List<Event> events = new ArrayList<>();
+        for (StepDto step: job.steps()) {
+            if (!stepStates.containsKey(step.name()) || !step.status().equals(stepStates.get(step.name()).status())) {
+                switch (step.status()) {
+                    case "completed" -> events.add(Event.stepCompleted(run, job, step));
+                    case "failure", "failed" -> events.add(Event.stepFailed(run, job, step));
+                    case "started" -> events.add(Event.stepStarted(run, job, step));
+                }
             }
         }
         return events;

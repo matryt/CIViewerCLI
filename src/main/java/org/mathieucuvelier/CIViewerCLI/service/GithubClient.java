@@ -4,6 +4,7 @@ import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.time.Instant;
+import java.time.ZonedDateTime;
 import java.util.List;
 
 import org.mathieucuvelier.CIViewerCLI.mappers.ResponseBodyMapper;
@@ -23,7 +24,7 @@ public class GithubClient {
         this.token = token;
     }
 
-    public List<WorkflowRunDTO> getWorkflowRuns(Instant since) {
+    public List<WorkflowRunDTO> getWorkflowRuns(ZonedDateTime datetime) {
         String url = urlForRepo + "/actions/runs?per_page=100";
         HttpRequest request = HttpRequest.newBuilder()
                 .uri(URI.create(url))
@@ -37,7 +38,7 @@ public class GithubClient {
             if (response.statusCode() == 200) {
                 String responseBody = response.body();
                 return responseBodyMapper.deserializeWorkflowRuns(responseBody).stream()
-                        .filter(run -> run.isAfter(since))
+                        .filter(run -> run.isAfter(datetime))
                         .toList();
             } else {
                 System.err.println("Failed to fetch workflow runs. HTTP Status: " + response.statusCode());

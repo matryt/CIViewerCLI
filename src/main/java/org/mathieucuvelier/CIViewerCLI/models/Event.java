@@ -1,19 +1,26 @@
 package org.mathieucuvelier.CIViewerCLI.models;
 
-import java.time.Instant;
+import java.time.ZoneId;
+import java.time.ZonedDateTime;
+import java.time.format.DateTimeFormatter;
 
 import org.mathieucuvelier.CIViewerCLI.utils.AnsiColors;
 
-public record Event(EventType type, Instant timestamp, String workflowName, String jobName, String stepName,
-        String status, String conclusion, String branch, String commitSha) {
+public record Event(EventType type, ZonedDateTime timestamp, String workflowName, String jobName, String stepName,
+                    String status, String conclusion, String branch, String commitSha) {
+    
+    private static final DateTimeFormatter FRIENDLY_FORMATTER = 
+        DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss z");
     
     public String toFormattedString() {
         StringBuilder sb = new StringBuilder();
-        sb.append("[").append(timestamp.toString()).append("] ");
+        sb.append("[").append(timestamp.withZoneSameInstant(ZoneId.systemDefault()).format(FRIENDLY_FORMATTER)).append("] ");
         if (type == EventType.WORKFLOW_STARTED || type == EventType.JOB_STARTED || type == EventType.STEP_STARTED) {
             sb.append(AnsiColors.BLUE.colorize(type.toString()));
         } else if (type == EventType.STEP_FAILED) {
             sb.append(AnsiColors.RED.colorize(type.toString()));
+        } else if (type == EventType.WORKFLOW_COMPLETED || type == EventType.JOB_COMPLETED ||  type == EventType.STEP_COMPLETED) {
+            sb.append(AnsiColors.GREEN.colorize(type.toString()));
         } else {
             sb.append(type.toString());
         }
@@ -38,11 +45,10 @@ public record Event(EventType type, Instant timestamp, String workflowName, Stri
             }
             sb.append(")");
         }
-        sb.append(" - ").append(branch).append("@").append(commitSha.substring(0, Math.min(7, commitSha.length())));
+        sb.append(" - ").append(branch).append("@").append(commitSha, 0, Math.min(7, commitSha.length()));
         return sb.toString();
     }
 
-    // Factory methods pour les workflows
     public static Event workflowStarted(WorkflowRunDTO run) {
         return new Event(
             EventType.WORKFLOW_STARTED,
@@ -71,7 +77,6 @@ public record Event(EventType type, Instant timestamp, String workflowName, Stri
         );
     }
 
-    // Factory methods pour les jobs
     public static Event jobStarted(WorkflowRunDTO run, WorkflowJobDTO job) {
         return new Event(
             EventType.JOB_STARTED,
@@ -100,7 +105,6 @@ public record Event(EventType type, Instant timestamp, String workflowName, Stri
         );
     }
 
-    // Factory methods pour les steps
     public static Event stepStarted(WorkflowRunDTO run, WorkflowJobDTO job, StepDto step) {
         return new Event(
             EventType.STEP_STARTED,

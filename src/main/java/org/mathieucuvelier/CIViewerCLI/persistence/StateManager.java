@@ -2,9 +2,14 @@ package org.mathieucuvelier.CIViewerCLI.persistence;
 
 import java.sql.PreparedStatement;
 import java.sql.SQLException;
+import java.time.Instant;
+import java.time.LocalDateTime;
+import java.time.ZoneId;
+import java.time.ZonedDateTime;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.stream.Collectors;
 
 public class StateManager {
@@ -13,9 +18,11 @@ public class StateManager {
     private final PreparedStatement GET_LAST_TIMESTAMP_PS;
     private final PreparedStatement GET_RUNS_PS;
     private final PreparedStatement GET_JOB_DETAILS_PS;
+    private final PreparedStatement GET_STEP_DETAILS_PS;
     private final PreparedStatement SAVE_TIMESTAMP_PS;
     private final PreparedStatement SAVE_RUN_PS;
     private final PreparedStatement SAVE_JOB_PS;
+    private final PreparedStatement SAVE_STEP_DETAILS_PS;
 
     public StateManager(DatabaseManager dbManager) throws SQLException {
         this.dbManager = dbManager;
@@ -28,17 +35,23 @@ public class StateManager {
                 "SELECT run_id, status, conclusion FROM run_state WHERE owner = ? AND repo = ?");
         this.GET_JOB_DETAILS_PS = conn.prepareStatement(
                 "SELECT job_id, status, conclusion FROM job_state WHERE owner = ? AND repo = ? AND run_id = ?");
+        this.GET_STEP_DETAILS_PS = conn.prepareStatement(
+                "SELECT step_name, status, conclusion FROM step_state WHERE owner = ? AND repo = ? AND run_id = ? AND job_id = ?"
+        );
         this.SAVE_TIMESTAMP_PS = conn.prepareStatement(
                 "INSERT OR REPLACE INTO repo_state (owner, repo, last_check_timestamp) VALUES (?, ?, ?)");
         this.SAVE_RUN_PS = conn.prepareStatement(
                 "INSERT OR REPLACE INTO run_state (owner, repo, run_id, status, conclusion, last_updated) VALUES (?, ?, ?, ?, ?, ?)");
         this.SAVE_JOB_PS = conn.prepareStatement(
                 "INSERT OR REPLACE INTO job_state (owner, repo, run_id, job_id, status, conclusion, last_updated) VALUES (?, ?, ?, ?, ?, ?, ?)");
+        this.SAVE_STEP_DETAILS_PS = conn.prepareStatement(
+                "INSERT OR REPLACE INTO step_state (owner, repo, run_id, job_id, step_name, status, conclusion, last_updated) VALUES (?, ?, ?, ?, ?, ?, ?, ?)"
+        );
     }
 
     public MonitorState loadState(String owner, String repo) {
-        long timestamp = loadLastCheckTimestamp(owner, repo);
-        if (timestamp == 0) {
+        ZonedDateTime timestamp = loadLastCheckTimestamp(owner, repo);
+        if (timestamp.equals(LocalDateTime.MIN.atZone(ZoneId.systemDefault()))) {
             return MonitorState.empty();
         }
 
@@ -46,26 +59,30 @@ public class StateManager {
         return new MonitorState(timestamp, runs);
     }
 
-    private long loadLastCheckTimestamp(String owner, String repo) {
+    private ZonedDateTime loadLastCheckTimestamp(String owner, String repo) {
         try {
             GET_LAST_TIMESTAMP_PS.clearParameters();
             GET_LAST_TIMESTAMP_PS.setString(1, owner);
             GET_LAST_TIMESTAMP_PS.setString(2, repo);
 
-            List<Long> results = dbManager.preparedQuery(
+            List<String> results = dbManager.preparedQuery(
                     GET_LAST_TIMESTAMP_PS,
                     rs -> {
                         try {
-                            return rs.getLong("last_check_timestamp");
+                            return rs.getString("last_check_timestamp");
                         } catch (SQLException e) {
                             return null;
                         }
                     });
 
-            return results.stream().filter(t -> t != null).toList().isEmpty() ? 0L : results.get(0);
+
+            List<String> list = results.stream().filter(Objects::nonNull).toList();
+            if (list.isEmpty()) return LocalDateTime.MIN.atZone(ZoneId.systemDefault());
+            Instant instant = Instant.parse(list.getFirst());
+            return ZonedDateTime.ofInstant(instant, ZoneId.systemDefault());
         } catch (SQLException e) {
             System.err.println("Error loading timestamp: " + e.getMessage());
-            return 0L;
+            return ZonedDateTime.now();
         }
     }
 
@@ -87,7 +104,7 @@ public class StateManager {
                 }
             });
 
-            return runs.stream().filter(r -> r != null)
+            return runs.stream().filter(Objects::nonNull)
                     .collect(Collectors.toMap(RunState::runId, r -> r));
 
         } catch (SQLException e) {
@@ -105,20 +122,55 @@ public class StateManager {
 
             List<JobState> jobs = dbManager.preparedQuery(GET_JOB_DETAILS_PS, rs -> {
                 try {
+                    long jobId = rs.getLong("job_id");
+                    Map<String, StepState> steps = loadSteps(owner, repo, runId, jobId);
                     return new JobState(
-                            rs.getLong("job_id"),
+                            jobId,
                             rs.getString("status"),
-                            rs.getString("conclusion"));
+                            rs.getString("conclusion"),
+                            steps);
                 } catch (SQLException e) {
                     return null;
                 }
             });
 
-            return jobs.stream().filter(j -> j != null)
+            return jobs.stream().filter(Objects::nonNull)
                     .collect(Collectors.toMap(JobState::jobId, j -> j));
 
         } catch (SQLException e) {
             System.err.println("Error loading jobs: " + e.getMessage());
+            return new HashMap<>();
+        }
+    }
+
+    private Map<String, StepState> loadSteps(String owner, String repo, long runId, long jobId) {
+        try {
+            GET_STEP_DETAILS_PS.clearParameters();
+            GET_STEP_DETAILS_PS.setString(1, owner);
+            GET_STEP_DETAILS_PS.setString(2, repo);
+            GET_STEP_DETAILS_PS.setLong(3, runId);
+            GET_STEP_DETAILS_PS.setLong(4, jobId);
+            List<StepState> steps = dbManager.preparedQuery(GET_STEP_DETAILS_PS, rs -> {
+                try {
+                    return new StepState(
+                            rs.getString("status"),
+                            rs.getString("conclusion"),
+                            rs.getString("step_name")
+                    );
+                }  catch (SQLException e) {
+                    return null;
+                }
+            });
+            Map<String, StepState> stepsMaps = new HashMap<>();
+            for (StepState step : steps) {
+                stepsMaps.put(
+                        step.stepName(), step
+                );
+            }
+            return stepsMaps;
+
+        } catch (SQLException e) {
+            System.err.println("Error loading steps: " + e.getMessage());
             return new HashMap<>();
         }
     }
@@ -128,7 +180,7 @@ public class StateManager {
             SAVE_TIMESTAMP_PS.clearParameters();
             SAVE_TIMESTAMP_PS.setString(1, owner);
             SAVE_TIMESTAMP_PS.setString(2, repo);
-            SAVE_TIMESTAMP_PS.setLong(3, state.lastCheckTimestamp());
+            SAVE_TIMESTAMP_PS.setString(3, state.lastCheckTimestamp().toInstant().toString());
             dbManager.executePreparedUpdate(SAVE_TIMESTAMP_PS);
 
             for (RunState run : state.knownRuns().values()) {
@@ -151,6 +203,18 @@ public class StateManager {
                     SAVE_JOB_PS.setString(6, job.conclusion());
                     SAVE_JOB_PS.setLong(7, System.currentTimeMillis());
                     dbManager.executePreparedUpdate(SAVE_JOB_PS);
+
+                    for (StepState stepState: job.stepStates().values()) {
+                        SAVE_STEP_DETAILS_PS.clearParameters();
+                        SAVE_STEP_DETAILS_PS.setString(1, owner);
+                        SAVE_STEP_DETAILS_PS.setString(2, repo);
+                        SAVE_STEP_DETAILS_PS.setLong(3, run.runId());
+                        SAVE_STEP_DETAILS_PS.setLong(4, job.jobId());
+                        SAVE_STEP_DETAILS_PS.setString(5, stepState.stepName());
+                        SAVE_STEP_DETAILS_PS.setString(6, stepState.status());
+                        SAVE_STEP_DETAILS_PS.setString(7, stepState.conclusion());
+                        SAVE_STEP_DETAILS_PS.setLong(8, System.currentTimeMillis());
+                    }
                 }
             }
         } catch (SQLException e) {
