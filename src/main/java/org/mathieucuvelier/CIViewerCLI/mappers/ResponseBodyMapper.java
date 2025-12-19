@@ -19,11 +19,11 @@ public class ResponseBodyMapper {
         objectMapper.registerModule(new JavaTimeModule());
     }
 
-    public WorkflowRunDTO deserializeWorkflowRun(JsonNode rootNode) throws IOException {
+    public WorkflowRunDTO deserializeWorkflowRun(JsonNode rootNode) {
         return objectMapper.convertValue(rootNode, WorkflowRunDTO.class);
     }
 
-    public WorkflowJobDTO deserializeWorkflowJob(JsonNode rootNode) throws IOException {
+    public WorkflowJobDTO deserializeWorkflowJob(JsonNode rootNode) {
         return objectMapper.convertValue(rootNode, WorkflowJobDTO.class);
     }
 

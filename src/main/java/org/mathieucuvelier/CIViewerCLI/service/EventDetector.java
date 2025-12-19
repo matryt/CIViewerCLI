@@ -19,55 +19,88 @@ public class EventDetector {
         for (Map.Entry<WorkflowRunDTO, List<WorkflowJobDTO>> runEntry: runsWithJobs.entrySet()) {
             WorkflowRunDTO run = runEntry.getKey();
             List<WorkflowJobDTO> jobs = runEntry.getValue();
-            if (previousState.knownRuns().containsKey(run.id())) {
-                RunState state = previousState.knownRuns().get(run.id());
-                if (run.status().equals("completed") && !state.status().equals("completed")) {
-                    events.add(Event.workflowCompleted(run));
-                }
-                events.addAll(detectJobs(run, jobs, state.knownJobs()));
+            
+            events.addAll(detectWorkflowEvents(run, previousState));
+            
+            Map<Long, JobState> previousJobs = previousState.knownRuns().containsKey(run.id())
+                ? previousState.knownRuns().get(run.id()).knownJobs()
+                : Map.of();
+            
+            events.addAll(detectJobs(run, jobs, previousJobs));
+        }
+        return events;
+    }
 
+    private List<Event> detectWorkflowEvents(WorkflowRunDTO run, MonitorState previousState) {
+        List<Event> events = new ArrayList<>();
+        RunState previousRunState = previousState.knownRuns().get(run.id());
+        
+        if (previousRunState == null) {
+            if (run.status().equals("completed")) {
+                events.add(Event.workflowCompleted(run));
+            } else if ("in_progress".equals(run.status()) || "queued".equals(run.status())) {
+                events.add(Event.workflowStarted(run));
             }
-            else {
-                if (!run.status().equals("completed")) {
-                    events.add(Event.workflowStarted(run));
-                    events.addAll(detectJobs(run, jobs, Map.of()));
-                } else {
-                    events.add(Event.workflowCompleted(run));
-                    for (WorkflowJobDTO job : jobs) {
-                        if (job.status().equals("completed")) {
-                            events.add(Event.jobCompleted(run, job));
-                        }
-                    }
-                }
+        } else {
+            boolean statusChanged = !run.status().equals(previousRunState.status());
+            if (statusChanged && run.status().equals("completed")) {
+                events.add(Event.workflowCompleted(run));
             }
         }
+        
         return events;
     }
 
     private List<Event> detectJobs(WorkflowRunDTO run, List<WorkflowJobDTO> jobs, Map<Long, JobState> jobStates) {
         List<Event> events = new ArrayList<>();
-        for (WorkflowJobDTO job: jobs) {
-            if (jobStates.containsKey(job.id())) {
-                JobState state = jobStates.get(job.id());
-                if (job.completed(state)) events.add(Event.jobCompleted(run, job));
-                events.addAll(detectSteps(run, job, state.stepStates()));
+        for (WorkflowJobDTO job : jobs) {
+            JobState previousJobState = jobStates.get(job.id());
+            
+            if (previousJobState == null) {
+                if (job.status().equals("completed")) {
+                    events.add(Event.jobCompleted(run, job));
+                } else if ("in_progress".equals(job.status()) || "queued".equals(job.status())) {
+                    events.add(Event.jobStarted(run, job));
+                }
+            } else {
+                boolean statusChanged = !job.status().equals(previousJobState.status());
+                if (statusChanged && job.status().equals("completed")) {
+                    events.add(Event.jobCompleted(run, job));
+                }
             }
-            else {
-                events.add(Event.jobStarted(run, job));
-                events.addAll(detectSteps(run, job, Map.of()));
-            }
+            
+            Map<String, StepState> previousSteps = previousJobState != null 
+                ? previousJobState.stepStates() 
+                : Map.of();
+            events.addAll(detectSteps(run, job, previousSteps));
         }
         return events;
     }
 
     private List<Event> detectSteps(WorkflowRunDTO run, WorkflowJobDTO job, Map<String, StepState> stepStates) {
         List<Event> events = new ArrayList<>();
-        for (StepDto step: job.steps()) {
-            if (!stepStates.containsKey(step.name()) || !step.status().equals(stepStates.get(step.name()).status())) {
-                switch (step.status()) {
-                    case "completed" -> events.add(Event.stepCompleted(run, job, step));
-                    case "failure", "failed" -> events.add(Event.stepFailed(run, job, step));
-                    case "started" -> events.add(Event.stepStarted(run, job, step));
+        for (StepDto step : job.steps()) {
+            StepState previousState = stepStates.get(step.name());
+            
+            if (previousState == null) {
+                if (step.status().equals("completed")) {
+                    if ("failure".equals(step.conclusion())) {
+                        events.add(Event.stepFailed(run, job, step));
+                    } else {
+                        events.add(Event.stepCompleted(run, job, step));
+                    }
+                } else if ("in_progress".equals(step.status()) || "queued".equals(step.status())) {
+                    events.add(Event.stepStarted(run, job, step));
+                }
+            } else {
+                boolean statusChanged = !step.status().equals(previousState.status());
+                
+                if (statusChanged && step.status().equals("completed")) {
+                    if ("failure".equals(step.conclusion())) {
+                        events.add(Event.stepFailed(run, job, step));
+                    } else {
+                        events.add(Event.stepCompleted(run, job, step));
+                    }
                 }
             }
         }

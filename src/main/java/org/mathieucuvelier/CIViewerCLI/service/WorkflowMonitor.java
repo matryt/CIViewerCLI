@@ -2,7 +2,6 @@ package org.mathieucuvelier.CIViewerCLI.service;
 
 import java.io.IOException;
 import java.sql.SQLException;
-import java.time.Instant;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
 import java.time.ZonedDateTime;
@@ -27,6 +26,16 @@ public class WorkflowMonitor {
     private final EventDetector detector = new EventDetector();
     private final String owner;
     private final String repo;
+    private int pollCount = 0;
+    
+    private long startTime;
+    private int workflowsStarted = 0;
+    private int workflowsCompleted = 0;
+    private int jobsStarted = 0;
+    private int jobsCompleted = 0;
+    private int stepsStarted = 0;
+    private int stepsCompleted = 0;
+    private int stepsFailed = 0;
     
     public WorkflowMonitor(GithubClient githubClient, String owner, String repo) throws SQLException, IOException {
         this.githubClient = githubClient;
@@ -38,7 +47,8 @@ public class WorkflowMonitor {
         Runtime.getRuntime().addShutdownHook(new Thread(() -> {
             lastDateTime = LocalDateTime.now().atZone(ZoneId.systemDefault());
             isRunning = false;
-            System.out.println("Shutting down WorkflowMonitor...");
+            System.out.println("\n" + AnsiColors.GRAY.colorize("Shutting down gracefully..."));
+            displaySummary();
         }));
         Runtime.getRuntime().addShutdownHook(
             new Thread(stateManager::close)
@@ -78,6 +88,7 @@ public class WorkflowMonitor {
 }
 
     public void startMonitoring() {
+        startTime = System.currentTimeMillis();
         addHook();
         MonitorState state = initializeState();
         System.out.println("Starting WorkflowMonitor...");
@@ -147,9 +158,12 @@ public class WorkflowMonitor {
         List<Event> events = detector.detectEvents(runsWithJobs, state);
         
         if (events.isEmpty()) {
-            System.out.println(AnsiColors.GRAY.colorize("No new events detected."));
+            pollCount++;
+            System.out.println(AnsiColors.GRAY.colorize("Monitoring... (" + pollCount + " polls, no events)"));
         } else {
+            pollCount = 0;
             for (Event event : events) {
+                trackEvent(event);
                 System.out.println(event.toFormattedString());
             }
         }
@@ -164,10 +178,52 @@ public class WorkflowMonitor {
 
     private void sleepBetweenPolls() {
         try {
-            Thread.sleep(30_000);
+            Thread.sleep(5_000);
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
             isRunning = false;
         }
+    }
+    
+    private void trackEvent(Event event) {
+        switch (event.type()) {
+            case WORKFLOW_STARTED -> workflowsStarted++;
+            case WORKFLOW_COMPLETED -> workflowsCompleted++;
+            case JOB_STARTED -> jobsStarted++;
+            case JOB_COMPLETED -> jobsCompleted++;
+            case STEP_STARTED -> stepsStarted++;
+            case STEP_COMPLETED -> stepsCompleted++;
+            case STEP_FAILED -> stepsFailed++;
+        }
+    }
+    
+    private void displaySummary() {
+        long durationMs = System.currentTimeMillis() - startTime;
+        long seconds = durationMs / 1000;
+        long minutes = seconds / 60;
+        long hours = minutes / 60;
+        
+        String duration;
+        if (hours > 0) {
+            duration = String.format("%dh %dm %ds", hours, minutes % 60, seconds % 60);
+        } else if (minutes > 0) {
+            duration = String.format("%dm %ds", minutes, seconds % 60);
+        } else {
+            duration = String.format("%ds", seconds);
+        }
+        
+        int totalEvents = workflowsStarted + workflowsCompleted + jobsStarted + jobsCompleted + 
+                          stepsStarted + stepsCompleted + stepsFailed;
+        
+        System.out.println("\n" + AnsiColors.BLUE.colorize("=== Monitoring Summary ==="));
+        System.out.println("Duration: " + duration);
+        System.out.println("Events detected: " + totalEvents);
+        if (totalEvents > 0) {
+            System.out.println("  - Workflows: " + workflowsStarted + " started, " + workflowsCompleted + " completed");
+            System.out.println("  - Jobs: " + jobsStarted + " started, " + jobsCompleted + " completed");
+            System.out.println("  - Steps: " + stepsStarted + " started, " + stepsCompleted + " completed, " + 
+                             AnsiColors.RED.colorize(String.valueOf(stepsFailed)) + " failed");
+        }
+        System.out.println("\n" + AnsiColors.GRAY.colorize("Final state saved."));
     }
 }

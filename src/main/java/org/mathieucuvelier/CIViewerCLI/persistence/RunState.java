@@ -8,7 +8,4 @@ public record RunState(
     String conclusion,
     Map<Long, JobState> knownJobs
 ) {
-    public boolean hasSameStatusAndConclusion(String wantedStatus, String wantedConclusion) {
-        return wantedStatus.equals(status) && wantedConclusion.equals(conclusion);
-    }
 }
