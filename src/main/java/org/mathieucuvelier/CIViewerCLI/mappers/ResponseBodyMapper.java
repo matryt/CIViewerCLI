@@ -29,6 +29,7 @@ public class ResponseBodyMapper {
 
     public List<WorkflowRunDTO> deserializeWorkflowRuns(String responseBody) throws IOException {
         JsonNode rootNode = objectMapper.readTree(responseBody);
+        if (!rootNode.has("workflow_runs")) throw new IllegalArgumentException("No workflow runs found");
         JsonNode runsNode = rootNode.get("workflow_runs");
         List<WorkflowRunDTO> workflowRuns = new ArrayList<>();
         if (runsNode.isArray()) {
@@ -42,6 +43,7 @@ public class ResponseBodyMapper {
 
     public List<WorkflowJobDTO> deserializeWorkflowJobs(String responseBody) throws IOException {
         JsonNode rootNode = objectMapper.readTree(responseBody);
+        if (!rootNode.has("jobs")) throw new IllegalArgumentException("No workflow jobs found");
         JsonNode jobsNode = rootNode.get("jobs");
         List<WorkflowJobDTO> workflowJobs = new ArrayList<>();
         if (jobsNode.isArray()) {

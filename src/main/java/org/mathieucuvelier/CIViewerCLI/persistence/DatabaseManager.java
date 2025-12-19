@@ -20,12 +20,18 @@ public class DatabaseManager {
     private final Connection connection;
 
     public DatabaseManager() throws IOException, SQLException {
-        Path civiewerDir = Path.of(".civiewer");
-        if (!Files.exists(civiewerDir)) {
-            Files.createDirectories(civiewerDir);
+        this(DB_PATH);
+    }
+    
+    public DatabaseManager(String dbPath) throws IOException, SQLException {
+        if (!dbPath.equals(":memory:")) {
+            Path civiewerDir = Path.of(".civiewer");
+            if (!Files.exists(civiewerDir)) {
+                Files.createDirectories(civiewerDir);
+            }
         }
 
-        connection = DriverManager.getConnection("jdbc:sqlite:" + DB_PATH);
+        connection = DriverManager.getConnection("jdbc:sqlite:" + dbPath);
         initDatabase();
     }
 

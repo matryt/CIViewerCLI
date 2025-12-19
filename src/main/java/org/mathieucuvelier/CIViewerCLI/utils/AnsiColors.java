@@ -5,6 +5,7 @@ public enum AnsiColors {
     RED("\u001B[31m"),
     GREEN("\u001B[32m"),
     BLUE("\u001B[34m"),
+    YELLOW("\u001B[33m"),
     GRAY("\u001B[90m");
 
     private final String code;

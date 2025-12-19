@@ -4,13 +4,16 @@ A real-time command-line tool for monitoring GitHub Actions workflows, jobs, and
 
 ## Features
 
-- **Real-time monitoring** - Polls GitHub Actions every 5 seconds to capture workflow state changes
+- **Real-time monitoring** - Polls GitHub Actions every 30 seconds to capture workflow state changes
 - **Complete event tracking** - Reports workflows being queued, jobs starting/finishing, and individual step execution
 - **Persistent state** - Resumes monitoring from the last checkpoint using SQLite storage
 - **Multi-repository support** - Each repository maintains independent state
-- **Graceful shutdown** - Handles Ctrl+C interruption cleanly
+- **Graceful shutdown** - Handles Ctrl+C interruption cleanly and displays a summary of events
 - **Detailed output** - Shows timestamps, branch names, commit SHAs, and completion status
 - **Failure detection** - Clearly identifies failed steps and workflows
+- **Retry logic** - Automatically retries failed HTTP requests with exponential backoff
+- **Polling optimization** - Dynamically adjusts polling intervals based on activity
+- **Startup banner** - Displays a visually appealing banner with repository details at startup
 
 ## Requirements
 
@@ -110,7 +113,10 @@ Press `Ctrl+C` to stop monitoring gracefully. The tool saves its state before ex
 ```
 src/main/java/org/mathieucuvelier/CIViewerCLI/
 ├── Main.java                      # Entry point
+├── mappers/                       # JSON mapping logic
+│   └── ResponseBodyMapper.java    # Maps GitHub API responses to DTOs
 ├── models/                        # DTOs and domain models
+│   ├── Config.java                # Configuration model
 │   ├── Event.java                 # Event representation with factory methods
 │   ├── EventType.java             # Event type enumeration
 │   ├── WorkflowRunDTO.java        # GitHub workflow run data
@@ -129,7 +135,19 @@ src/main/java/org/mathieucuvelier/CIViewerCLI/
 │   └── GithubClient.java          # GitHub API client
 └── utils/                         # Utilities
     ├── AnsiColors.java            # Terminal colors
-    └── ArgumentsParser.java       # CLI argument parsing
+    └── ConsoleLogger.java         # Logging utility
+
+src/test/java/org/mathieucuvelier/CIViewerCLI/
+├── mappers/                       # Tests for mappers
+│   └── ResponseBodyMapperTest.java
+├── models/                        # Tests for models
+│   └── EventTest.java
+├── persistence/                   # Tests for persistence layer
+│   └── StateManagerTest.java
+└── service/                       # Tests for services
+    ├── EventDetectorTest.java
+    ├── GithubClientTest.java
+    └── WorkflowMonitorTest.java
 ```
 
 ## Dependencies
