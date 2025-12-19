@@ -17,7 +17,7 @@ A real-time command-line tool for monitoring GitHub Actions workflows, jobs, and
 
 ## Requirements
 
-- Java 25 or later
+- Java 21 or later
 - Maven 3.6+
 - GitHub Personal Access Token with `repo` scope
 
@@ -102,7 +102,7 @@ Press `Ctrl+C` to stop monitoring gracefully. The tool saves its state before ex
 
 ## Architecture
 
-- **Language**: Java 25
+- **Language**: Java 21
 - **Build Tool**: Maven
 - **Persistence**: SQLite (stores state in `.civiewer/state.db`)
 - **HTTP Client**: Java 11+ HttpClient
@@ -154,7 +154,7 @@ src/test/java/org/mathieucuvelier/CIViewerCLI/
 
 - Jackson (JSON processing)
 - SQLite JDBC driver
-- Java 25 standard library
+- Java 21 standard library
 
 ## License
 

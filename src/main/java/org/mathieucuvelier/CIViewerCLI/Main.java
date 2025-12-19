@@ -12,7 +12,7 @@ import org.mathieucuvelier.CIViewerCLI.utils.ConsoleLogger;
 
 public class Main {
 
-    static void main(String[] args) {
+    public static void main(String[] args) {
         Config config;
         try {
             config = Config.fromArgs(args);
