@@ -11,7 +11,4 @@ import com.fasterxml.jackson.annotation.JsonProperty;
 public record WorkflowJobDTO(Long id, String name, String status, String conclusion,
                 @JsonProperty("started_at") String startedAt, @JsonProperty("completed_at") String completedAt,
                 List<StepDto> steps) {
-        public boolean completed(JobState state) {
-                return !state.status().equals("completed") && status.equals("completed");
-        }
 }

@@ -149,7 +149,8 @@ public class GithubClient {
         }
 
         System.err.println("All retry attempts failed.");
-        throw lastException; // Preserve the original exception
+        if (lastException != null) throw lastException;
+        throw new RuntimeException("All retry attempts failed.");
     }
 
     private HttpRequest.Builder createRequestBuilder(String url) {

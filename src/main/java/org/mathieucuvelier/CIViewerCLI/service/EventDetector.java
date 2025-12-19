@@ -33,15 +33,14 @@ public class EventDetector {
 
     private List<Event> detectWorkflowEvents(WorkflowRunDTO run, MonitorState previousState) {
         List<Event> events = new ArrayList<>();
-        RunState previousRunState = previousState.knownRuns().get(run.id());
-        
-        if (previousRunState == null) {
+        if (previousState.knownRuns().containsKey(run.id())) {
             if (run.status().equals("completed")) {
                 events.add(Event.workflowCompleted(run));
             } else if ("in_progress".equals(run.status()) || "queued".equals(run.status())) {
                 events.add(Event.workflowStarted(run));
             }
         } else {
+            RunState previousRunState = previousState.knownRuns().get(run.id());
             boolean statusChanged = !run.status().equals(previousRunState.status());
             if (statusChanged && run.status().equals("completed")) {
                 events.add(Event.workflowCompleted(run));
@@ -55,7 +54,7 @@ public class EventDetector {
         List<Event> events = new ArrayList<>();
         for (WorkflowJobDTO job : jobs) {
             JobState previousJobState = jobStates.get(job.id());
-            
+
             if (previousJobState == null) {
                 if (job.status().equals("completed")) {
                     events.add(Event.jobCompleted(run, job));
@@ -80,9 +79,7 @@ public class EventDetector {
     private List<Event> detectSteps(WorkflowRunDTO run, WorkflowJobDTO job, Map<String, StepState> stepStates) {
         List<Event> events = new ArrayList<>();
         for (StepDto step : job.steps()) {
-            StepState previousState = stepStates.get(step.name());
-            
-            if (previousState == null) {
+            if (stepStates.containsKey(step.name())) {
                 if (step.status().equals("completed")) {
                     if ("failure".equals(step.conclusion())) {
                         events.add(Event.stepFailed(run, job, step));
@@ -93,6 +90,7 @@ public class EventDetector {
                     events.add(Event.stepStarted(run, job, step));
                 }
             } else {
+                StepState previousState = stepStates.get(step.name());
                 boolean statusChanged = !step.status().equals(previousState.status());
                 
                 if (statusChanged && step.status().equals("completed")) {

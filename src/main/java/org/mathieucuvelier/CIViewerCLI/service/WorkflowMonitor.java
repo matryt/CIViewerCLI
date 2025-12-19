@@ -52,9 +52,7 @@ public class WorkflowMonitor {
     }
 
     private void log(String message) {
-        if (logger != null) {
-            logger.accept(message);
-        }
+        logger.accept(message);
     }
 
     private void addHook() {
@@ -136,7 +134,7 @@ public class WorkflowMonitor {
             return handleFirstRun();
         } else {
             DateTimeFormatter formatter = 
-                java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss z");
+                DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss z");
             log("Resuming from last check timestamp: " +
                     state.lastCheckTimestamp().format(formatter));
             lastDateTime = state.lastCheckTimestamp();

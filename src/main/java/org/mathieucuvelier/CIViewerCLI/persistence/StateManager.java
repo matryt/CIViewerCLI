@@ -82,7 +82,7 @@ public class StateManager {
             return ZonedDateTime.ofInstant(instant, ZoneId.systemDefault());
         } catch (SQLException e) {
             System.err.println("Error loading timestamp: " + e.getMessage());
-            return ZonedDateTime.now();
+            return LocalDateTime.MIN.atZone(ZoneId.systemDefault());
         }
     }
 
